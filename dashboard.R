@@ -5,12 +5,11 @@ library(tidyverse)
 library(lubridate)
 library(ggplot2)
 
-#For the tags table, there's a column called primary tag, only use the ones where it is true because otherwise there could be duplicates.
-#Check out browser function for debugging
-# curly braces for any multi line reactive
-# Try a workflow with the three table options where there is one output table in the ui, and then the output is switched between the three tables
-#     with a reactive function
-# lookup the argument in the file widgets that controls size
+# Find the download table widget and make the tables downloadable.
+# Use a conditional panel to make the raw data option look nicer
+# Read the dplyr documentation for SQl servers
+# Try to get the sql application working
+# Read the tamatoa readmes
 # To push changes use commit and then push to actually get it onto github
 
 #Global variables
@@ -50,11 +49,14 @@ ui <- dashboardPage(
     
     # Second tab content
     tabItem(tabName = "captures",
-            h2("Captures tab content"),
-            radioButtons("summary", "Choose Summary Option", summary),
-            uiOutput("season_list"),
-            DTOutput("summarydatatbl"),
-            plotOutput("plot", width = "700px")
+          fluidRow(
+            column(5,radioButtons("summary", "Choose Summary Option", summary)),
+            column(3,uiOutput("season_list"))
+          ),
+          plotOutput("plot", width = "700px"),
+          DTOutput("summarydatatbl"),
+          downloadButton("downloadData", "Download")
+            
     )
   )
   )
@@ -75,7 +77,7 @@ server <- function(input, output, session) {
     read.csv(req(input$load_beaches$datapath))
   })
   tags <- reactive({
-    read.csv(req(input$load_tags$datatpath))
+    read.csv(req(input$load_tags$datapath))
   })
   output$datatbl <- renderDT(
     season_info(), options = list(lengthChange = FALSE)
@@ -125,7 +127,6 @@ server <- function(input, output, session) {
       rename(pinniped_id = ID)
     pinnipeds_simple <- pinnipeds %>%
       select(pinniped_id, species, sex)
-    #also need tag unique, not sure what that is
     tags_simple <- tags() %>%
       filter(primary_tag == "TRUE") %>%
       select(tag, tag_type, pinniped_id, tagging_date)
@@ -161,14 +162,16 @@ server <- function(input, output, session) {
   
   summary_plot_reactive <- reactive({
     if(input$summary == "Summary 1: Captures by season and species") {
-        return(ggplot(DTsummary1(), aes(x = capture_season, y = number_of_captures, fill = species)) +
-          geom_bar(position = "stack", stat = "identity")) +
+        return(ggplot(DTsummary1(), aes(x = capture_season, y = number_of_captures, color = species, group = species)) +
+          geom_point(position = "identity", stat = "identity") +
+          geom_line(position = "identity", stat = "identity") +
           theme(axis.text.x = element_text(angle = 90)))
     }
     #make this a point and line plot
     if(input$summary == "Summary 2: Captures by species in a given season") {
-        return(ggplot(DTsummary2(), aes(x = capture_date, y = number_of_captures, fill = species)) +
-          geom_bar(position = "stack", stat = "identity") +
+        return(ggplot(DTsummary2(), aes(x = capture_date, y = number_of_captures, color = species, group = species)) +
+          geom_point(position = "identity", stat = "identity") +
+          geom_line(position = "identity", stat = "identity") +
           theme(axis.text.x = element_text(angle = 90)))
     }
     
@@ -177,7 +180,16 @@ server <- function(input, output, session) {
   output$plot <- renderPlot({
     validate(need(input$summary != "raw data", "no plot for raw data"))
     summary_plot_reactive()
-  }, res = 96, width = 700)
+  }, res = 96)#,width = 700)
+  
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste(input$summarydatatbl, ".csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(summary_table_reactive(), file, row.names = FALSE)
+    }
+  )
 }
 
 
